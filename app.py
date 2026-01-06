@@ -1,5 +1,7 @@
 import streamlit as st
 import asyncio
+import hashlib
+from pathlib import Path
 import os
 os.environ["USER_AGENT"] = "MyAgent/0.1"
 
@@ -11,6 +13,8 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.runnables.passthrough import RunnablePassthrough
 from langchain_core.runnables.base import RunnableLambda
 from langchain_core.prompts.chat import ChatPromptTemplate
+from langchain_classic.storage import LocalFileStore
+from langchain_classic.embeddings import CacheBackedEmbeddings
 
 
 with st.sidebar:
@@ -21,6 +25,7 @@ with st.sidebar:
     url = st.text_input(
         label="Write down a URL",
         value="https://developers.cloudflare.com/sitemap-0.xml",
+        disabled=True,
     )
 
     st.write("https://github.com/animasana/assignment08/blob/main/app.py")
@@ -142,31 +147,46 @@ def load_website(url):
         chunk_overlap=1000,
     )
 
-    if url == "https://developers.cloudflare.com/sitemap-0.xml":
+    loader = SitemapLoader(
+        url,
         filter_urls=[
             "https://developers.cloudflare.com/ai-gateway/",
             "https://developers.cloudflare.com/vectorize/",
             "https://developers.cloudflare.com/workers-ai/",
-        ]
-    else:
-        filter_urls = []
-
-
-    loader = SitemapLoader(
-        url,
-        filter_urls=filter_urls,
+        ],
         parsing_function=parse_page,
     )
     loader.requests_per_second = 3
     docs = loader.load_and_split(text_splitter=splitter)
-    vector_stores = FAISS.from_documents(
-        docs, 
-        OpenAIEmbeddings(
-            model="text-embedding-3-small",
-            api_key=OPENAI_API_KEY,
-        )
+    
+    return docs
+
+def sha256_key_encoder(key: str) -> str:
+    return hashlib.sha256(key.encode("utf-8")).hexdigest()
+
+
+@st.cache_resource(show_spinner="Embedding document...")
+def embed_file(docs):    
+    embeddings = OpenAIEmbeddings(
+        model="text-embedding-3-small",
+        api_key=OPENAI_API_KEY,
     )
-    return vector_stores.as_retriever()
+
+    # Path("./.cache/files/").mkdir(parents=True, exist_ok=True)        
+    cache_dir = LocalFileStore(root_path=f"./.cache/embeddings/cloudflare")
+    cached_embeddings = CacheBackedEmbeddings.from_bytes_store(
+        underlying_embeddings=embeddings,
+        document_embedding_cache=cache_dir,
+        key_encoder=sha256_key_encoder,
+    )    
+    
+    vectorstore = FAISS.from_documents(
+        documents=docs, 
+        embedding=cached_embeddings,
+    )
+    retriever = vectorstore.as_retriever()
+    return retriever
+
 
 st.set_page_config(
     page_title="Assignment08",
@@ -192,7 +212,8 @@ if url:
         with st.sidebar:
             st.error("Please write down a Sitemap URL")
     else:
-        retriever = load_website(url)
+        docs = load_website(url)
+        retriever = embed_file(docs)
         query = st.text_input("Ask a question to the website.")
         if query:        
             chain = (
