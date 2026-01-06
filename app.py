@@ -180,10 +180,8 @@ def load_website(url):
     )
     loader = SitemapLoader(
         url,
-        filter_urls=[
-            "https://developers.cloudflare.com/ai-gateway/",
-            "https://developers.cloudflare.com/vectorize/",
-            "https://developers.cloudflare.com/workers-ai/",
+        filter_urls=[            
+            r"^https://developers\.cloudflare\.com/(ai-gateway|vectorize|workers-ai)(/.*)?$",
         ],
         parsing_function=parse_page,
     )
