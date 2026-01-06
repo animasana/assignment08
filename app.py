@@ -157,7 +157,7 @@ def load_website(url):
         filter_urls=filter_urls,
         parsing_function=parse_page,
     )
-    loader.requests_per_second = 2
+    loader.requests_per_second = 5
     docs = loader.load_and_split(text_splitter=splitter)
     vector_stores = FAISS.from_documents(
         docs, 
@@ -203,7 +203,7 @@ if url:
                 | RunnableLambda(get_answers)
                 | RunnableLambda(choose_answer)
             )
-            with st.spinner("Waiting..."):
+            with st.spinner("Waiting a response..."):
                 result = chain.invoke(query)
 
             if result:
