@@ -15,8 +15,6 @@ from langchain_core.runnables.base import RunnableLambda
 from langchain_core.prompts.chat import ChatPromptTemplate
 from langchain_classic.storage import LocalFileStore
 from langchain_classic.embeddings import CacheBackedEmbeddings
-from langchain_community.chat_message_histories import StreamlitChatMessageHistory
-from langchain_core.callbacks.base import BaseCallbackHandler
 
 
 with st.sidebar:
@@ -32,50 +30,14 @@ with st.sidebar:
 
 
 if not OPENAI_API_KEY:
-    st.markdown(
-        """
-        # Assignment08 SiteGPT
-        
-        Ask questions grounded in the content of Cloudflare.
-
-        Start by writing your own OPENAI_API_KEY on the sidebar.
-        """
-    )
     st.error("Input your own openai api key.")
     st.stop()
 
-
-
-history = StreamlitChatMessageHistory()
-
-
-class ChatCallbackHandler(BaseCallbackHandler):
-    def on_llm_start(self, *args, **kwargs):
-        self.message = ""
-        self.message_box = st.empty()
-
-    def on_llm_end(self, *args, **kwargs):
-        history.add_ai_message(self.message)
-
-    def on_llm_new_token(self, token, *args, **kwargs):
-        self.message += token
-        self.message_box.markdown(self.message)
-
-
-silent_llm = ChatOpenAI(
-    model="gpt-5-nano",
-    temperature=0.1,
-    api_key=OPENAI_API_KEY,    
-)
 
 llm = ChatOpenAI(
     model="gpt-5-nano",
     temperature=0.1,
     api_key=OPENAI_API_KEY,
-    streaming=True,
-    callbacks=[
-        ChatCallbackHandler(),
-    ]
 )
 
 
@@ -130,7 +92,7 @@ choose_prompt = ChatPromptTemplate.from_messages(
 def get_answers(inputs):
     docs = inputs["docs"]
     question = inputs["question"]
-    answers_chain = answers_prompt | silent_llm
+    answers_chain = answers_prompt | llm
 
     return {
         "question": question,
@@ -217,19 +179,20 @@ def load_website(url):
     return retriever
 
 
-def send_human_message(message):
-    st.chat_message("human").markdown(message)
-    history.add_user_message(message)
-
-
-def paint_history():
-    for msg in history.messages:
-        st.chat_message(msg.type).markdown(msg.content)
-
-
 st.set_page_config(
     page_title="Assignment08",
     page_icon="🖥️",
+)
+
+
+st.markdown(
+    """
+    # Assignment08 SiteGPT
+    
+    Ask questions grounded in the content of Cloudflare.
+
+    Start by writing your own OPENAI_API_KEY on the sidebar.
+    """
 )
 
 
@@ -238,18 +201,15 @@ if hasattr(asyncio, "WindowsProactorEventLoopPolicy"):
 
 
 retriever = load_website(url)
-
-st.chat_message("ai").write("I'm ready! Ask away!")
-paint_history()
-message = st.chat_input("Ask a question to the website")
-if message:
-    send_human_message(message)
+query = st.text_input("Ask a question to the website.")
+if query:
     chain = (
         {"docs": retriever, "question": RunnablePassthrough()}
         | RunnableLambda(get_answers)
         | RunnableLambda(choose_answer)
     )
-    with st.spinner("Waiting for a response..."):
-        with st.chat_message("ai"):
-            chain.invoke(message)
-            
+    with st.spinner("Waiting a response..."):
+        result = chain.invoke(query)
+
+    if result:
+        st.markdown(result.content)
