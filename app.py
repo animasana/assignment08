@@ -1,7 +1,6 @@
 import streamlit as st
 import asyncio
 import hashlib
-from pathlib import Path
 import os
 os.environ["USER_AGENT"] = "MyAgent/0.1"
 
@@ -20,15 +19,14 @@ from langchain_classic.embeddings import CacheBackedEmbeddings
 with st.sidebar:
     OPENAI_API_KEY = st.text_input(
         label="OPENAI_API_KEY",        
-    )
-    
+    )    
     url = st.text_input(
         label="Write down a URL",
         value="https://developers.cloudflare.com/sitemap-0.xml",
         disabled=True,
     )
-
     st.write("https://github.com/animasana/assignment08/blob/main/app.py")
+
 
 if not OPENAI_API_KEY:
     st.error("Input your own openai api key.")
@@ -40,6 +38,7 @@ llm = ChatOpenAI(
     temperature=0.1,
     api_key=OPENAI_API_KEY,
 )
+
 
 answers_prompt = ChatPromptTemplate.from_template(
     template="""    
@@ -139,6 +138,9 @@ def parse_page(soup):
     )
 
 
+def sha256_key_encoder(key: str) -> str:
+    return hashlib.sha256(key.encode("utf-8")).hexdigest()
+
 
 @st.cache_resource(show_spinner="Loading website...")
 def load_website(url):
@@ -146,7 +148,6 @@ def load_website(url):
         chunk_size=5000,
         chunk_overlap=1000,
     )
-
     loader = SitemapLoader(
         url,
         filter_urls=[
@@ -159,27 +160,16 @@ def load_website(url):
     loader.requests_per_second = 3
     docs = loader.load_and_split(text_splitter=splitter)
     
-    return docs
-
-def sha256_key_encoder(key: str) -> str:
-    return hashlib.sha256(key.encode("utf-8")).hexdigest()
-
-
-@st.cache_resource(show_spinner="Embedding document...")
-def embed_file(docs):    
     embeddings = OpenAIEmbeddings(
         model="text-embedding-3-small",
         api_key=OPENAI_API_KEY,
     )
-
-    # Path("./.cache/files/").mkdir(parents=True, exist_ok=True)        
     cache_dir = LocalFileStore(root_path=f"./.cache/embeddings/cloudflare")
     cached_embeddings = CacheBackedEmbeddings.from_bytes_store(
         underlying_embeddings=embeddings,
         document_embedding_cache=cache_dir,
         key_encoder=sha256_key_encoder,
     )    
-    
     vectorstore = FAISS.from_documents(
         documents=docs, 
         embedding=cached_embeddings,
@@ -193,6 +183,7 @@ st.set_page_config(
     page_icon="🖥️",
 )
 
+
 st.markdown(
     """
     # Assignment08 SiteGPT
@@ -203,6 +194,7 @@ st.markdown(
     """
 )
 
+
 if hasattr(asyncio, "WindowsProactorEventLoopPolicy"):
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
@@ -212,8 +204,8 @@ if url:
         with st.sidebar:
             st.error("Please write down a Sitemap URL")
     else:
-        docs = load_website(url)
-        retriever = embed_file(docs)
+        retriever = load_website(url)
+                
         query = st.text_input("Ask a question to the website.")
         if query:        
             chain = (
