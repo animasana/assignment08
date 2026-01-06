@@ -1,3 +1,4 @@
+from jinja2 import Template
 import streamlit as st
 import asyncio
 import hashlib
@@ -12,7 +13,8 @@ from langchain_community.vectorstores import FAISS
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.runnables.passthrough import RunnablePassthrough
 from langchain_core.runnables.base import RunnableLambda
-from langchain_core.prompts.chat import ChatPromptTemplate
+from langchain_core.prompts.chat import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.prompts.prompt import PromptTemplate
 from langchain_classic.storage import LocalFileStore
 from langchain_classic.embeddings import CacheBackedEmbeddings
 from langchain_community.chat_message_histories import StreamlitChatMessageHistory
@@ -56,7 +58,7 @@ class ChatCallbackHandler(BaseCallbackHandler):
 silent_llm = ChatOpenAI(
     model="gpt-5-nano",
     temperature=0.1,
-    api_key=OPENAI_API_KEY,    
+    api_key=OPENAI_API_KEY,
 )
 
 llm = ChatOpenAI(
@@ -66,8 +68,56 @@ llm = ChatOpenAI(
     streaming=True,
     callbacks=[
         ChatCallbackHandler(),
-    ]
+    ],
 )
+
+
+chat = ChatOpenAI(
+    model="gpt-5-nano",
+    temperature=0.1,
+    api_key=OPENAI_API_KEY,
+    streaming=True,
+    callbacks=[
+        ChatCallbackHandler(),
+    ],
+)
+
+
+def determine_message(message):
+    prompt = PromptTemplate.from_template(
+        template="""
+        {message}가 아래의 **A. Usual routines**이면 "routine"이란 단어를 리턴하며            
+        {message} 가 아래의 **B. Cloudflare technical questions**이면 "technical"
+        단어를 리턴한다.
+
+        A. Usual routines
+            Messages about:
+            - Daily life, habits, schedules
+            - Personal activities (work, study, exercise, meals, sleep)
+            - Non-technical or generic questions
+
+            Examples
+            - “I usually wake up at 7 and go for a run.”
+            - “What’s a good morning routine?”
+            - “I work from home three days a week.”
+
+        B. Cloudflare technical questions
+
+            Messages that mention Cloudflare or its ecosystem and are technical in nature:
+            - Cloudflare products (Workers, Pages, R2, D1, KV, Vectorize, AI Gateway, WAF)
+            - Networking / CDN / DNS / security concepts tied to Cloudflare
+            - Errors, configs, APIs, performance, deployment
+
+            Examples
+            - “How do I cache API responses in Cloudflare Workers?”
+            - “What does 1020 Access Denied mean in Cloudflare?”
+            - “Difference between Cloudflare R2 and S3?”
+        """
+    )
+
+    chain = prompt | silent_llm
+
+    return chain.invoke({"message": message})
 
 
 answers_prompt = ChatPromptTemplate.from_template(
@@ -103,7 +153,7 @@ choose_prompt = ChatPromptTemplate.from_messages(
     [
         (
             "system",
-            """
+            """            
             Use ONLY the following pre-existing answers to answer the user's question.
 
             Use the answers that have the highest score (more helpful) and favor the most recent ones.
@@ -113,6 +163,22 @@ choose_prompt = ChatPromptTemplate.from_messages(
             Answers: {answers}
             """,
         ),
+        ("human", "{question}"),
+    ]
+)
+
+
+chat_prompt = ChatPromptTemplate.from_messages(
+    [
+        (
+            "system", 
+            """
+            You are a helpful assistant. 
+        
+            You may use conversation history to remember user preferences or personal details.            
+            """
+        ),
+        MessagesPlaceholder(variable_name="history"),
         ("human", "{question}"),
     ]
 )
@@ -129,8 +195,8 @@ def get_answers(inputs):
             {
                 "answer": answers_chain.invoke(
                     {
-                        "question": question, 
-                        "context": doc.page_content
+                        "question": question,
+                        "context": doc.page_content,
                     }
                 ).content,
                 "source": doc.metadata["source"],
@@ -150,7 +216,12 @@ def choose_answer(inputs):
         for answer in answers
     )
 
-    return choose_chain.invoke({"question": question, "answers": condensed})
+    return choose_chain.invoke(
+        {
+            "question": question,
+            "answers": condensed,
+        }
+    )
 
 
 def parse_page(soup):
@@ -183,7 +254,7 @@ def load_website(url):
     )
     loader = SitemapLoader(
         url,
-        filter_urls=[            
+        filter_urls=[
             r"^https://developers\.cloudflare\.com/(ai-gateway|vectorize|workers-ai)(/.*)?$",
         ],
         parsing_function=parse_page,
@@ -219,6 +290,9 @@ def paint_history():
         st.chat_message(msg.type).markdown(msg.content)
 
 
+def load_memory(_):
+    return history.messages
+
 st.set_page_config(
     page_title="Assignment08",
     page_icon="🖥️",
@@ -245,15 +319,27 @@ st.chat_message("ai").write("I'm ready! Ask away!")
 paint_history()
 message = st.chat_input("Ask a question to the website")
 if message:
-    send_human_message(message)
-    chain = (
-        {
-            "docs": retriever, 
-            "question": RunnablePassthrough()
-        }
-        | RunnableLambda(get_answers)
-        | RunnableLambda(choose_answer)
-    )
-    with st.spinner("Waiting a response..."):
+    send_human_message(message)    
+    if determine_message(message).content == "technical":        
+        chain = (
+            {
+                "docs": retriever,
+                "question": RunnablePassthrough(),
+            }
+            | RunnableLambda(get_answers)
+            | RunnableLambda(choose_answer)
+        )
+        with st.spinner("Waiting a response..."):
+            with st.chat_message("ai"):
+                chain.invoke(message)
+    else:        
+        chain = (
+            {
+                "question": RunnablePassthrough(),
+                "history": RunnableLambda(load_memory),            
+            } 
+            | chat_prompt 
+            | chat
+        )
         with st.chat_message("ai"):
             chain.invoke(message)
