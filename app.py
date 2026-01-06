@@ -157,7 +157,7 @@ def load_website(url):
         filter_urls=filter_urls,
         parsing_function=parse_page,
     )
-    loader.requests_per_second = 5
+    loader.requests_per_second = 3
     docs = loader.load_and_split(text_splitter=splitter)
     vector_stores = FAISS.from_documents(
         docs, 
