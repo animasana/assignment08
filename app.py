@@ -15,7 +15,7 @@ from langchain_core.prompts.chat import ChatPromptTemplate
 
 with st.sidebar:
     OPENAI_API_KEY = st.text_input(
-        label="Write down your own openai api key.",        
+        label="OPENAI_API_KEY",        
     )
     
     url = st.text_input(
@@ -23,7 +23,7 @@ with st.sidebar:
         value="https://developers.cloudflare.com/sitemap-0.xml",
     )
 
-    st.write("https://my.own.com")
+    st.write("https://github.com/animasana/assignment08/blob/main/app.py")
 
 if not OPENAI_API_KEY:
     st.error("Input your own openai api key.")
@@ -203,7 +203,8 @@ if url:
                 | RunnableLambda(get_answers)
                 | RunnableLambda(choose_answer)
             )
-            result = chain.invoke(query)
+            with st.spinner("Waiting..."):
+                result = chain.invoke(query)
 
             if result:
                 st.markdown(result.content)
