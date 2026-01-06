@@ -2,6 +2,7 @@ import streamlit as st
 import asyncio
 import hashlib
 import os
+
 os.environ["USER_AGENT"] = "MyAgent/0.1"
 
 from langchain_community.document_loaders import SitemapLoader
@@ -18,8 +19,8 @@ from langchain_classic.embeddings import CacheBackedEmbeddings
 
 with st.sidebar:
     OPENAI_API_KEY = st.text_input(
-        label="OPENAI_API_KEY",        
-    )    
+        label="OPENAI_API_KEY",
+    )
     url = st.text_input(
         label="Write down a URL",
         value="https://developers.cloudflare.com/sitemap-0.xml",
@@ -92,29 +93,33 @@ def get_answers(inputs):
     docs = inputs["docs"]
     question = inputs["question"]
     answers_chain = answers_prompt | llm
-    
+
     return {
         "question": question,
         "answers": [
-        {
-            "answer": answers_chain.invoke(
-                {"question": question, "context": doc.page_content}
-            ).content,
-            "source": doc.metadata["source"],
-            "date": doc.metadata["lastmod"],
-        } 
-        for doc in docs
-    ]}
+            {
+                "answer": answers_chain.invoke(
+                    {"question": question, "context": doc.page_content}
+                ).content,
+                "source": doc.metadata["source"],
+                "date": doc.metadata["lastmod"],
+            }
+            for doc in docs
+        ],
+    }
 
 
 def choose_answer(inputs):
     answers = inputs["answers"]
     question = inputs["question"]
     choose_chain = choose_prompt | llm
-    condensed = "\n\n".join(f"Answer: {answer['answer']}\nSource: {answer['source']}\nDate: {answer['date']}\n" for answer in answers)
-    
+    condensed = "\n\n".join(
+        f"Answer: {answer['answer']}\nSource: {answer['source']}\nDate: {answer['date']}\n"
+        for answer in answers
+    )
+
     return choose_chain.invoke({"question": question, "answers": condensed})
-    
+
 
 def parse_page(soup):
     divs = soup.find_all("div", class_="sidebar-pane")
@@ -131,11 +136,7 @@ def parse_page(soup):
         for bottom_div in bottom_divs:
             bottom_div.decompose()
 
-    return (
-        str(soup.get_text())
-            .replace("\n", " ")
-            .replace("xa0", " ")            
-    )
+    return str(soup.get_text()).replace("\n", " ").replace("xa0", " ")
 
 
 def sha256_key_encoder(key: str) -> str:
@@ -159,7 +160,7 @@ def load_website(url):
     )
     loader.requests_per_second = 3
     docs = loader.load_and_split(text_splitter=splitter)
-    
+
     embeddings = OpenAIEmbeddings(
         model="text-embedding-3-small",
         api_key=OPENAI_API_KEY,
@@ -169,9 +170,9 @@ def load_website(url):
         underlying_embeddings=embeddings,
         document_embedding_cache=cache_dir,
         key_encoder=sha256_key_encoder,
-    )    
+    )
     vectorstore = FAISS.from_documents(
-        documents=docs, 
+        documents=docs,
         embedding=cached_embeddings,
     )
     retriever = vectorstore.as_retriever()
@@ -199,32 +200,16 @@ if hasattr(asyncio, "WindowsProactorEventLoopPolicy"):
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 
-if url:
-    if ".xml" not in url:
-        with st.sidebar:
-            st.error("Please write down a Sitemap URL")
-    else:
-        retriever = load_website(url)
+retriever = load_website(url)
+query = st.text_input("Ask a question to the website.")
+if query:
+    chain = (
+        {"docs": retriever, "question": RunnablePassthrough()}
+        | RunnableLambda(get_answers)
+        | RunnableLambda(choose_answer)
+    )
+    with st.spinner("Waiting a response..."):
+        result = chain.invoke(query)
 
-        query = st.text_input("Ask a question to the website.")
-        if query:        
-            chain = (
-                {
-                    "docs": retriever, 
-                    "question": RunnablePassthrough()
-                } 
-                | RunnableLambda(get_answers)
-                | RunnableLambda(choose_answer)
-            )
-            with st.spinner("Waiting a response..."):
-                result = chain.invoke(query)
-
-            if result:
-                st.markdown(result.content)
-
-else:
-    st.error("I need a url!!")
-    st.stop()
-
-        
-        
+    if result:
+        st.markdown(result.content)
