@@ -319,8 +319,9 @@ st.chat_message("ai").write("I'm ready! Ask away!")
 paint_history()
 message = st.chat_input("Ask a question to the website")
 if message:
-    send_human_message(message)    
-    if determine_message(message).content == "technical":        
+    send_human_message(message)
+    msg = determine_message(message)
+    if msg.content == "technical":        
         chain = (
             {
                 "docs": retriever,
