@@ -31,22 +31,13 @@ with st.sidebar:
     st.write("https://github.com/animasana/assignment08/blob/main/app.py")
 
 
-if not OPENAI_API_KEY:
-    st.markdown(
-        """
-        # Assignment08 SiteGPT
-        
-        Ask questions grounded in the content of Cloudflare.
-
-        Start by writing your own OPENAI_API_KEY on the sidebar.
-        """
-    )
-    st.error("Input your own openai api key.")
-    st.stop()
-
-
-
 history = StreamlitChatMessageHistory()
+
+
+if not OPENAI_API_KEY:
+    st.error("Input your own openai api key.")
+    history.clear()
+    st.stop()
 
 
 class ChatCallbackHandler(BaseCallbackHandler):
@@ -233,12 +224,22 @@ st.set_page_config(
 )
 
 
+st.markdown(
+    """
+    # Assignment08 SiteGPT
+    
+    Ask questions grounded in the content of Cloudflare.
+
+    Start by writing your own OPENAI_API_KEY on the sidebar.
+    """
+)
+
+
 if hasattr(asyncio, "WindowsProactorEventLoopPolicy"):
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 
 retriever = load_website(url)
-
 st.chat_message("ai").write("I'm ready! Ask away!")
 paint_history()
 message = st.chat_input("Ask a question to the website")
@@ -249,7 +250,6 @@ if message:
         | RunnableLambda(get_answers)
         | RunnableLambda(choose_answer)
     )
-    with st.spinner("Waiting for a response..."):
+    with st.spinner("Waiting a response..."):
         with st.chat_message("ai"):
             chain.invoke(message)
-            
