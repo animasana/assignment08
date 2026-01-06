@@ -128,7 +128,10 @@ def get_answers(inputs):
         "answers": [
             {
                 "answer": answers_chain.invoke(
-                    {"question": question, "context": doc.page_content}
+                    {
+                        "question": question, 
+                        "context": doc.page_content
+                    }
                 ).content,
                 "source": doc.metadata["source"],
                 "date": doc.metadata["lastmod"],
@@ -244,7 +247,10 @@ message = st.chat_input("Ask a question to the website")
 if message:
     send_human_message(message)
     chain = (
-        {"docs": retriever, "question": RunnablePassthrough()}
+        {
+            "docs": retriever, 
+            "question": RunnablePassthrough()
+        }
         | RunnableLambda(get_answers)
         | RunnableLambda(choose_answer)
     )
