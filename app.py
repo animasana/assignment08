@@ -188,9 +188,9 @@ st.markdown(
     """
     # Assignment08 SiteGPT
     
-    Ask questions grounded in the content of Cloudflare or other websites.
+    Ask questions grounded in the content of Cloudflare.
 
-    Start by writing your api key and the URL of the website on the sidebar.
+    Start by writing your own OPENAI_API_KEY on the sidebar.
     """
 )
 
@@ -205,7 +205,7 @@ if url:
             st.error("Please write down a Sitemap URL")
     else:
         retriever = load_website(url)
-                
+
         query = st.text_input("Ask a question to the website.")
         if query:        
             chain = (
